@@ -7,7 +7,8 @@ maintained at [Jymdis/hass-aarlo](https://github.com/Jymdis/hass-aarlo). It is
 released under the same licence as upstream, the GNU LGPL v3 (see
 [LICENSE](LICENSE)); the original copyright and authorship are unchanged.
 Branch `lp/main` starts at upstream tag `v0.8.1.27`. Fork version:
-`0.8.1.27.lp1`.
+`0.8.1.27.1` (the first fork release, `0.8.1.27.lp1`, was rejected by Home
+Assistant as an invalid version; use `0.8.1.27.1` or later).
 
 Changes in this fork:
 
@@ -54,7 +55,7 @@ on its own.
 1. HACS > three-dot menu > Custom repositories: add
    `https://github.com/Jymdis/hass-aarlo`, category **Integration**.
 2. Install **Arlo Camera Support** from that repository (version
-   `0.8.1.27.lp1` or later) and restart Home Assistant. On the first start
+   `0.8.1.27.1` or later) and restart Home Assistant. On the first start
    Home Assistant installs pyaarlo `0.8.0.27.post1` from the URL above.
 
 If upstream hass-aarlo is already installed through HACS, remove that

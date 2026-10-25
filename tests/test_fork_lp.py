@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from awesomeversion import AwesomeVersion, AwesomeVersionException, AwesomeVersionStrategy
 import voluptuous as vol
 from homeassistant.components.ffmpeg import DATA_FFMPEG
 from homeassistant.exceptions import HomeAssistantError
@@ -118,3 +119,29 @@ def test_manifest_requirement_pins_the_fork_version():
     # first install instead of reinstalling from GitHub on every start.
     assert pyaarlo[0].url is None
     assert str(pyaarlo[0].specifier) == "==0.8.0.27.post1"
+
+
+# The strategies homeassistant/loader.py accepts for a custom integration's
+# manifest version; anything else blocks the integration from loading.
+_HA_CUSTOM_VERSION_STRATEGIES = [
+    AwesomeVersionStrategy.CALVER,
+    AwesomeVersionStrategy.SEMVER,
+    AwesomeVersionStrategy.SIMPLEVER,
+    AwesomeVersionStrategy.BUILDVER,
+    AwesomeVersionStrategy.PEP440,
+]
+
+
+def _ha_accepts(version):
+    try:
+        AwesomeVersion(version, ensure_strategy=_HA_CUSTOM_VERSION_STRATEGIES)
+    except AwesomeVersionException:
+        return False
+    return True
+
+
+def test_manifest_version_is_accepted_by_home_assistant():
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    assert _ha_accepts(manifest["version"]), manifest["version"]
+    # 0.8.1.27.lp1 was blocked by Home Assistant; the check must catch it.
+    assert not _ha_accepts("0.8.1.27.lp1")
