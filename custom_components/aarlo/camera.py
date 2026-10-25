@@ -36,7 +36,7 @@ from homeassistant.const import (
     ATTR_ENTITY_ID,
     CONF_FILENAME,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_aiohttp_proxy_stream
 from homeassistant.helpers.config_validation import PLATFORM_SCHEMA
@@ -119,6 +119,15 @@ SERVICE_REQUEST_VIDEO_TO_FILE = "camera_request_video_to_file"
 SERVICE_STOP_ACTIVITY = "camera_stop_activity"
 SERVICE_RECORD_START = "camera_start_recording"
 SERVICE_RECORD_STOP = "camera_stop_recording"
+# Fork: start a fresh user stream and return its URL as a service response.
+SERVICE_START_STREAM = "camera_start_stream"
+ATTR_USER_AGENT = "user_agent"
+DEFAULT_STREAM_USER_AGENT = "linux"
+STREAM_EXPIRES_IN = 30
+START_STREAM_SCHEMA = vol.Schema({
+    vol.Required(ATTR_ENTITY_ID): vol.All(cv.comp_entity_ids, vol.Length(min=1, max=1)),
+    vol.Optional(ATTR_USER_AGENT, default=DEFAULT_STREAM_USER_AGENT): cv.string,
+})
 SIREN_ON_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids,
     vol.Required(ATTR_DURATION): cv.positive_int,
@@ -262,6 +271,17 @@ async def async_setup_entry(
             SERVICE_RECORD_STOP,
             async_service_callback,
             schema=CAMERA_SERVICE_SCHEMA,
+        )
+
+        async def async_start_stream_service(call: ServiceCall) -> ServiceResponse:
+            return await async_camera_start_stream_service(hass, call)
+
+        hass.services.async_register(
+            COMPONENT_DOMAIN,
+            SERVICE_START_STREAM,
+            async_start_stream_service,
+            schema=START_STREAM_SCHEMA,
+            supports_response=SupportsResponse.ONLY,
         )
 
     # Websockets
@@ -605,6 +625,12 @@ class ArloCam(Camera):
         return self._camera.wait_for_user_stream()
 
     def _start_snapshot_stream(self):
+        # Fork: when a stream is already running (a doorbell press starts
+        # one), take the snapshot from it straight away; starting another
+        # stream and waiting for it only delays the image.
+        if getattr(self._camera, "is_stream_active", False):
+            _LOGGER.debug(f"{self._attr_unique_id} snapshot from the active stream")
+            return None
         if self._stream_snapshot:
             source = self._camera.start_snapshot_stream()
             if source is not None:
@@ -655,6 +681,26 @@ class ArloCam(Camera):
                 # camera/cloud stop. Preserve errors instead of hiding them.
                 stopped = await self.hass.async_add_executor_job(self.stop_activity)
             return stopped
+
+    async def async_start_fresh_stream(self, user_agent=DEFAULT_STREAM_USER_AGENT):
+        """Fork: clear stale stream state, start a user stream, return its details.
+
+        Stops whatever the camera and HA's stream worker are doing first (the
+        `camera_stop_activity` equivalent), so a URL left from an ended session
+        can never be returned, then POSTs startUserStream. Arlo drops the stream
+        when nothing connects to it within about 30 seconds.
+        """
+        await self.async_stop_activity()
+        url = await self.hass.async_add_executor_job(
+            self._camera.start_stream, user_agent
+        )
+        if not url:
+            raise HomeAssistantError(f"Arlo did not start a stream for {self.entity_id}")
+        return {
+            "url": url,
+            "format": stream_format(url, user_agent),
+            "expires_in": STREAM_EXPIRES_IN,
+        }
 
     def siren_on(self, duration=30, volume=10):
         if self._camera.has_capability(SIREN_STATE_KEY):
@@ -1022,6 +1068,28 @@ def camera_video_to_file_service(hass, call):
         except HomeAssistantError:
             _LOGGER.warning("{} video to file service failed".format(entity_id))
         _LOGGER.debug("{0} video to file finished".format(entity_id))
+
+
+def stream_format(url, user_agent):
+    """Fork: name the format of an Arlo stream URL (dash, rtsps or hls)."""
+    lowered = url.lower()
+    if lowered.startswith(("rtsp://", "rtsps://")):
+        return "rtsps"
+    if ".m3u8" in lowered:
+        return "hls"
+    if ".mpd" in lowered:
+        return "dash"
+    return "rtsps" if user_agent.lower() == "arlo" else "dash"
+
+
+async def async_camera_start_stream_service(hass, call):
+    """Fork: aarlo.camera_start_stream, answers with the stream URL."""
+    entity_id = call.data[ATTR_ENTITY_ID][0]
+    _LOGGER.info("{} start stream".format(entity_id))
+    camera = get_entity_from_domain(hass, CAMERA_DOMAIN, entity_id)
+    return await camera.async_start_fresh_stream(
+        call.data.get(ATTR_USER_AGENT, DEFAULT_STREAM_USER_AGENT)
+    )
 
 
 async def async_camera_stop_activity_service(hass, call):

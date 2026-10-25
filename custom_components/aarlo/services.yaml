@@ -48,6 +48,26 @@ camera_stop_activity:
       integration: aarlo
       domain: camera
 
+camera_start_stream:
+  name: Start a Stream
+  description: >-
+    Stop any stale stream, start a new user stream and return its URL
+    (response only). Arlo drops the stream if nothing connects within 30 seconds.
+  target:
+    entity:
+      integration: aarlo
+      domain: camera
+  fields:
+    user_agent:
+      name: User Agent
+      description: >-
+        linux (default) returns an MPEG-DASH URL; arlo returns an RTSPS URL.
+      required: false
+      default: linux
+      example: linux
+      selector:
+        text:
+
 camera_start_recording:
   name: Record to the Cloud
   description: Request a camera start recording to cloud

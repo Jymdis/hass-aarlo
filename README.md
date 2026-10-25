@@ -1,5 +1,66 @@
 # **An Arlo Home Assistant Integration**
 
+## Fork notice
+
+This is a fork of [twrecked/hass-aarlo](https://github.com/twrecked/hass-aarlo),
+maintained at [Jymdis/hass-aarlo](https://github.com/Jymdis/hass-aarlo). It is
+released under the same licence as upstream, the GNU LGPL v3 (see
+[LICENSE](LICENSE)); the original copyright and authorship are unchanged.
+Branch `lp/main` starts at upstream tag `v0.8.1.27`. Fork version:
+`0.8.1.27.lp1`.
+
+Changes in this fork:
+
+- **pyaarlo from the fork.** `manifest.json` requires
+  [Jymdis/pyaarlo](https://github.com/Jymdis/pyaarlo) `0.8.0.27.post1`
+  (snapshot fix for upstream pyaarlo issue
+  [#207](https://github.com/twrecked/pyaarlo/issues/207): a stream URL lookup no
+  longer hides a stopped camera, so `takeSnapshot` is no longer sent to a camera
+  that is not streaming). The requirement is the tag's source archive with a
+  version fragment,
+  `https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post1.tar.gz#pyaarlo==0.8.0.27.post1`:
+  it needs no `git`, and Home Assistant checks the installed version against
+  the fragment, so the package is installed once instead of on every start.
+- **New service `aarlo.camera_start_stream`** (response only, one camera).
+  Stops any stale stream (as `aarlo.camera_stop_activity` does), starts a new
+  user stream and returns `{"url": ..., "format": "dash" | "rtsps" | "hls",
+  "expires_in": 30}`. Optional field `user_agent`: `linux` (default, MPEG-DASH)
+  or `arlo` (RTSPS). Arlo drops the stream if nothing connects within about 30
+  seconds.
+
+  ```yaml
+  action: aarlo.camera_start_stream
+  target:
+    entity_id: camera.aarlo_front_door
+  data:
+    user_agent: linux
+  response_variable: stream
+  ```
+- **Faster doorbell snapshots.** When a stream is already running (for example
+  after a doorbell press), `aarlo.camera_request_snapshot` takes the snapshot
+  from it at once instead of starting another stream and waiting for it.
+- **ASCII entity ids by default.** `no_unicode_squash` now defaults to `false`,
+  so a camera called `Haustür` becomes `camera.aarlo_haustur`. **Existing
+  installs that never set `no_unicode_squash` and have non-ASCII device names
+  will see those entities' unique_ids and entity ids change**; set
+  `no_unicode_squash: true` in `/config/aarlo.yaml` to keep the old ids.
+  Installs that set the option explicitly are unaffected.
+
+A weekly workflow opens a pull request when upstream moves on; it never merges
+on its own.
+
+### Install with HACS
+
+1. HACS > three-dot menu > Custom repositories: add
+   `https://github.com/Jymdis/hass-aarlo`, category **Integration**.
+2. Install **Arlo Camera Support** from that repository (version
+   `0.8.1.27.lp1` or later) and restart Home Assistant. On the first start
+   Home Assistant installs pyaarlo `0.8.0.27.post1` from the URL above.
+
+If upstream hass-aarlo is already installed through HACS, remove that
+repository first; both install to `custom_components/aarlo`.
+
+
 _Aarlo_ is a custom component for [Home  Assistant](https://www.home-assistant.io/), that provides access to  the [Arlo](https://www.arlo.com/en-us/) system.
 
 _Aarlo_ provides, amongst other things:

@@ -193,6 +193,16 @@
           "description": "File name to containing the packet."
         }
       }
+    },
+    "camera_start_stream": {
+      "name": "Camera Start Stream",
+      "description": "Stop any stale stream, start a new one and return its URL.",
+      "fields": {
+        "user_agent": {
+          "name": "User Agent",
+          "description": "linux (default) for MPEG-DASH, arlo for RTSPS."
+        }
+      }
     }
   }
 }

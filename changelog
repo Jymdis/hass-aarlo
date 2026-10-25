@@ -1,3 +1,9 @@
+0.8.1.27.lp1 (fork: Jymdis/hass-aarlo)
+  - Require pyaarlo 0.8.0.27.post1 from Jymdis/pyaarlo (snapshot fix, pyaarlo #207).
+  - New response-only service aarlo.camera_start_stream.
+  - camera_request_snapshot uses an already active stream straight away.
+  - no_unicode_squash defaults to false (ASCII entity ids).
+
 0.8.1.27
   - Fix tagging issue.
 

@@ -103,7 +103,8 @@ STREAM_SNAPSHOT_STOP = 0
 SAVE_UPDATES_TO = ""
 USER_STREAM_DELAY = 1
 SAVE_MEDIA_TO = ""
-NO_UNICODE_SQUASH = True
+# Fork: squash Unicode by default so entity ids and unique_ids are ASCII.
+NO_UNICODE_SQUASH = False
 SAVE_SESSION = True
 DEFAULT_BACKEND = "auto"
 DEFAULT_CIPHER_LIST = ""
