@@ -1,3 +1,12 @@
+0.8.1.27.2 (fork: Jymdis/hass-aarlo)
+  - Require pyaarlo 0.8.0.27.post2 from Jymdis/pyaarlo: the event stream is
+    restarted with the new token after a re-login, a watchdog restarts a stream
+    that is disconnected or silent, and the default reconnect_every really
+    runs (every 90 minutes). Fixes doorbell presses and motion no longer
+    arriving after some hours while the integration looked healthy.
+  - New aarlo.yaml option stream_watchdog_minutes (default 15, 0 turns the
+    idle check off).
+
 0.8.1.27.1 (fork: Jymdis/hass-aarlo)
   - Fix manifest version: Home Assistant rejected 0.8.1.27.lp1 and blocked the integration.
 

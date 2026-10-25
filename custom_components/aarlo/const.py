@@ -33,6 +33,7 @@ CONF_MODE_API = "mode_api"
 CONF_DEVICE_REFRESH = "refresh_devices_every"
 CONF_MODE_REFRESH = "refresh_modes_every"
 CONF_RECONNECT_EVERY = "reconnect_every"
+CONF_STREAM_WATCHDOG = "stream_watchdog_minutes"
 CONF_VERBOSE_DEBUG = "verbose_debug"
 CONF_INJECTION_SERVICE = "injection_service"
 CONF_SNAPSHOT_TIMEOUT = "snapshot_timeout"
@@ -86,6 +87,7 @@ MODE_API = "auto"
 DEVICE_REFRESH = 2
 MODE_REFRESH = 0
 RECONNECT_EVERY = 0
+STREAM_WATCHDOG = 15
 VERBOSE_DEBUG = False
 DEFAULT_INJECTION_SERVICE = False
 SNAPSHOT_TIMEOUT = timedelta(seconds=45)

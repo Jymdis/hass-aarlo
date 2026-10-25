@@ -94,6 +94,9 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(
                     CONF_RECONNECT_EVERY, default=RECONNECT_EVERY
                 ): cv.positive_int,
+                vol.Optional(
+                    CONF_STREAM_WATCHDOG, default=STREAM_WATCHDOG
+                ): cv.positive_int,
                 vol.Optional(CONF_VERBOSE_DEBUG, default=VERBOSE_DEBUG): cv.boolean,
                 vol.Optional(
                     CONF_INJECTION_SERVICE, default=DEFAULT_INJECTION_SERVICE

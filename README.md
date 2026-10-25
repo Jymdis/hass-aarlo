@@ -7,21 +7,29 @@ maintained at [Jymdis/hass-aarlo](https://github.com/Jymdis/hass-aarlo). It is
 released under the same licence as upstream, the GNU LGPL v3 (see
 [LICENSE](LICENSE)); the original copyright and authorship are unchanged.
 Branch `lp/main` starts at upstream tag `v0.8.1.27`. Fork version:
-`0.8.1.27.1` (the first fork release, `0.8.1.27.lp1`, was rejected by Home
+`0.8.1.27.2` (the first fork release, `0.8.1.27.lp1`, was rejected by Home
 Assistant as an invalid version; use `0.8.1.27.1` or later).
 
 Changes in this fork:
 
 - **pyaarlo from the fork.** `manifest.json` requires
-  [Jymdis/pyaarlo](https://github.com/Jymdis/pyaarlo) `0.8.0.27.post1`
+  [Jymdis/pyaarlo](https://github.com/Jymdis/pyaarlo) `0.8.0.27.post2`
   (snapshot fix for upstream pyaarlo issue
   [#207](https://github.com/twrecked/pyaarlo/issues/207): a stream URL lookup no
   longer hides a stopped camera, so `takeSnapshot` is no longer sent to a camera
   that is not streaming). The requirement is the tag's source archive with a
   version fragment,
-  `https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post1.tar.gz#pyaarlo==0.8.0.27.post1`:
+  `https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post2.tar.gz#pyaarlo==0.8.0.27.post2`:
   it needs no `git`, and Home Assistant checks the installed version against
   the fragment, so the package is installed once instead of on every start.
+- **Event stream that stays alive** (pyaarlo `0.8.0.27.post2`). After a 401
+  and re-login the MQTT event stream could keep the old token and go silent:
+  recordings still appeared, but doorbell presses and motion did not. The
+  stream is now restarted with the new token, and a watchdog restarts it when
+  it stays disconnected or carries nothing for `stream_watchdog_minutes`
+  (default `15`, `0` turns that check off) in `/config/aarlo.yaml`.
+  `reconnect_every: 0` now means every 90 minutes instead of never. Restarts
+  are logged as warnings with the reason.
 - **New service `aarlo.camera_start_stream`** (response only, one camera).
   Stops any stale stream (as `aarlo.camera_stop_activity` does), starts a new
   user stream and returns `{"url": ..., "format": "dash" | "rtsps" | "hls",
@@ -55,8 +63,8 @@ on its own.
 1. HACS > three-dot menu > Custom repositories: add
    `https://github.com/Jymdis/hass-aarlo`, category **Integration**.
 2. Install **Arlo Camera Support** from that repository (version
-   `0.8.1.27.1` or later) and restart Home Assistant. On the first start
-   Home Assistant installs pyaarlo `0.8.0.27.post1` from the URL above.
+   `0.8.1.27.2` or later) and restart Home Assistant. On the first start
+   Home Assistant installs pyaarlo `0.8.0.27.post2` from the URL above.
 
 If upstream hass-aarlo is already installed through HACS, remove that
 repository first; both install to `custom_components/aarlo`.

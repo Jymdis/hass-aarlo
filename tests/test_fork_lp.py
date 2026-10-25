@@ -118,7 +118,7 @@ def test_manifest_requirement_pins_the_fork_version():
     # A version pin (not a bare URL) lets HA see it as installed after the
     # first install instead of reinstalling from GitHub on every start.
     assert pyaarlo[0].url is None
-    assert str(pyaarlo[0].specifier) == "==0.8.0.27.post1"
+    assert str(pyaarlo[0].specifier) == "==0.8.0.27.post2"
 
 
 # The strategies homeassistant/loader.py accepts for a custom integration's
@@ -145,3 +145,16 @@ def test_manifest_version_is_accepted_by_home_assistant():
     assert _ha_accepts(manifest["version"]), manifest["version"]
     # 0.8.1.27.lp1 was blocked by Home Assistant; the check must catch it.
     assert not _ha_accepts("0.8.1.27.lp1")
+
+
+def test_stream_watchdog_option_reaches_pyaarlo():
+    from pyaarlo.cfg import ArloCfg
+    from custom_components.aarlo.cfg import AARLO_SCHEMA
+
+    assert AARLO_SCHEMA({})["stream_watchdog_minutes"] == 15
+    conf = AARLO_SCHEMA({"stream_watchdog_minutes": 0})
+    assert conf["stream_watchdog_minutes"] == 0
+    assert ArloCfg(MagicMock(), stream_watchdog_minutes=conf["stream_watchdog_minutes"]).stream_watchdog == 0
+    assert ArloCfg(MagicMock()).stream_watchdog == 15 * 60
+    with pytest.raises(vol.Invalid):
+        AARLO_SCHEMA({"stream_watchdog_minutes": -1})
