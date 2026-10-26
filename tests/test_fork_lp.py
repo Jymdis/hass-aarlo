@@ -67,15 +67,95 @@ async def test_start_stream_stops_stale_activity_then_starts():
     result = await cam.async_start_fresh_stream("linux")
     assert order == ["stop", ("start", "linux")]
     assert result == {"url": "https://example.invalid/stream.mpd",
-                      "format": "dash", "expires_in": 30}
+                      "format": "dash", "expires_in": 30, "reused": False}
+    device.get_stream.assert_not_called()
+
+
+@pytest.fixture
+def no_retry_delay(monkeypatch):
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(aarlo_camera.asyncio, "sleep", fake_sleep)
+    return sleeps
 
 
 @pytest.mark.asyncio
-async def test_start_stream_raises_when_arlo_returns_nothing():
+async def test_start_stream_raises_when_arlo_returns_nothing(no_retry_delay):
     cam, device = _camera()
     device.start_stream.return_value = None
     with pytest.raises(HomeAssistantError):
         await cam.async_start_fresh_stream("arlo")
+    # One retry, 4 s later, each attempt stopping first.
+    assert device.start_stream.call_count == 2
+    assert device.stop_activity.call_count == 2
+    assert no_retry_delay == [4]
+
+
+@pytest.mark.asyncio
+async def test_active_stream_is_reused_without_stopping(no_retry_delay):
+    cam, device = _camera(active=True)
+    device.get_stream.return_value = "rtsps://example.invalid/live"
+    result = await cam.async_start_fresh_stream("arlo")
+    device.get_stream.assert_called_once_with("arlo")
+    device.stop_activity.assert_not_called()
+    device.start_stream.assert_not_called()
+    assert result == {"url": "rtsps://example.invalid/live", "format": "rtsps",
+                      "expires_in": 30, "reused": True}
+    assert no_retry_delay == []
+
+
+@pytest.mark.asyncio
+async def test_active_stream_ignored_when_reuse_is_off():
+    cam, device = _camera(active=True)
+    device.start_stream.return_value = "rtsps://example.invalid/fresh"
+    result = await cam.async_start_fresh_stream("arlo", reuse_active=False)
+    device.get_stream.assert_not_called()
+    device.stop_activity.assert_called_once_with()
+    assert result["reused"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reuse_effect", [None, RuntimeError("boom")])
+async def test_reuse_without_url_falls_back_to_fresh_start(no_retry_delay, reuse_effect):
+    cam, device = _camera(active=True)
+    if isinstance(reuse_effect, Exception):
+        device.get_stream.side_effect = reuse_effect
+    else:
+        device.get_stream.return_value = reuse_effect
+    order = []
+    device.stop_activity.side_effect = lambda: order.append("stop") or True
+    device.start_stream.side_effect = lambda ua: order.append("start") or         "rtsps://example.invalid/fresh"
+    result = await cam.async_start_fresh_stream("arlo")
+    assert order == ["stop", "start"]
+    assert result["url"] == "rtsps://example.invalid/fresh"
+    assert result["reused"] is False
+    assert no_retry_delay == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first", [None, RuntimeError("cloud error")])
+async def test_failed_fresh_start_is_retried_once(no_retry_delay, first):
+    cam, device = _camera()
+    order = []
+    results = iter([first, "https://example.invalid/second.mpd"])
+
+    def start(ua):
+        order.append("start")
+        value = next(results)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    device.stop_activity.side_effect = lambda: order.append("stop") or True
+    device.start_stream.side_effect = start
+    result = await cam.async_start_fresh_stream("linux")
+    assert order == ["stop", "start", "stop", "start"]
+    assert no_retry_delay == [4]
+    assert result["url"] == "https://example.invalid/second.mpd"
+    assert result["reused"] is False
 
 
 @pytest.mark.parametrize("url,agent,expected", [
@@ -91,7 +171,9 @@ def test_stream_format(url, agent, expected):
 
 def test_start_stream_schema_takes_one_camera_and_defaults_to_linux():
     data = START_STREAM_SCHEMA({"entity_id": "camera.aarlo_test"})
-    assert data == {"entity_id": ["camera.aarlo_test"], "user_agent": "linux"}
+    assert data == {"entity_id": ["camera.aarlo_test"], "user_agent": "linux",
+                    "reuse_active": True}
+    assert START_STREAM_SCHEMA({"entity_id": "camera.a", "reuse_active": False})["reuse_active"] is False
     with pytest.raises(vol.Invalid):
         START_STREAM_SCHEMA({"entity_id": ["camera.a", "camera.b"]})
 
@@ -101,9 +183,10 @@ async def test_service_handler_returns_the_camera_response(monkeypatch):
     cam = MagicMock()
     cam.async_start_fresh_stream = AsyncMock(return_value={"url": "u"})
     monkeypatch.setattr(aarlo_camera, "get_entity_from_domain", lambda *_: cam)
-    call = SimpleNamespace(data={"entity_id": ["camera.aarlo_test"], "user_agent": "arlo"})
+    call = SimpleNamespace(data={"entity_id": ["camera.aarlo_test"], "user_agent": "arlo",
+                                 "reuse_active": False})
     assert await aarlo_camera.async_camera_start_stream_service(None, call) == {"url": "u"}
-    cam.async_start_fresh_stream.assert_awaited_once_with("arlo")
+    cam.async_start_fresh_stream.assert_awaited_once_with("arlo", False)
 
 
 def test_unicode_is_squashed_by_default():

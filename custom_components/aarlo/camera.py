@@ -122,11 +122,15 @@ SERVICE_RECORD_STOP = "camera_stop_recording"
 # Fork: start a fresh user stream and return its URL as a service response.
 SERVICE_START_STREAM = "camera_start_stream"
 ATTR_USER_AGENT = "user_agent"
+ATTR_REUSE_ACTIVE = "reuse_active"
 DEFAULT_STREAM_USER_AGENT = "linux"
 STREAM_EXPIRES_IN = 30
+# Fork: seconds to wait before the one retry of a failed fresh start.
+START_STREAM_RETRY_DELAY = 4
 START_STREAM_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): vol.All(cv.comp_entity_ids, vol.Length(min=1, max=1)),
     vol.Optional(ATTR_USER_AGENT, default=DEFAULT_STREAM_USER_AGENT): cv.string,
+    vol.Optional(ATTR_REUSE_ACTIVE, default=True): cv.boolean,
 })
 SIREN_ON_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids,
@@ -682,24 +686,55 @@ class ArloCam(Camera):
                 stopped = await self.hass.async_add_executor_job(self.stop_activity)
             return stopped
 
-    async def async_start_fresh_stream(self, user_agent=DEFAULT_STREAM_USER_AGENT):
-        """Fork: clear stale stream state, start a user stream, return its details.
-
-        Stops whatever the camera and HA's stream worker are doing first (the
-        `camera_stop_activity` equivalent), so a URL left from an ended session
-        can never be returned, then POSTs startUserStream. Arlo drops the stream
-        when nothing connects to it within about 30 seconds.
-        """
+    async def _async_fresh_start(self, user_agent):
+        """Stop whatever runs, then POST startUserStream. None when it fails."""
         await self.async_stop_activity()
-        url = await self.hass.async_add_executor_job(
-            self._camera.start_stream, user_agent
-        )
+        try:
+            return await self.hass.async_add_executor_job(
+                self._camera.start_stream, user_agent
+            )
+        except Exception as err:  # noqa: BLE001 - retried, then reported
+            _LOGGER.warning(f"{self.entity_id} start stream failed: {type(err).__name__}")
+            return None
+
+    async def async_start_fresh_stream(self, user_agent=DEFAULT_STREAM_USER_AGENT,
+                                       reuse_active=True):
+        """Fork: start a user stream and return its details.
+
+        With `reuse_active` and the camera already streaming (a doorbell press
+        puts it in alertStreamActive), the running stream is joined through
+        pyaarlo's get_stream without stopping it first; stopping it is what made
+        a start during a press fail. Otherwise, or when that gives no URL, it
+        stops whatever the camera and HA's stream worker are doing (the
+        `camera_stop_activity` equivalent), so a URL left from an ended session
+        can never be returned, then POSTs startUserStream; a failed start is
+        retried once after START_STREAM_RETRY_DELAY seconds. Arlo drops the
+        stream when nothing connects to it within about 30 seconds.
+        """
+        url = None
+        reused = False
+        if reuse_active and getattr(self._camera, "is_stream_active", False) is True:
+            try:
+                url = await self.hass.async_add_executor_job(
+                    self._camera.get_stream, user_agent
+                )
+            except Exception as err:  # noqa: BLE001 - falls back to a fresh start
+                _LOGGER.warning(f"{self.entity_id} reuse stream failed: {type(err).__name__}")
+                url = None
+            reused = bool(url)
+        if not url:
+            url = await self._async_fresh_start(user_agent)
+        if not url:
+            _LOGGER.info(f"{self.entity_id} retrying stream start")
+            await asyncio.sleep(START_STREAM_RETRY_DELAY)
+            url = await self._async_fresh_start(user_agent)
         if not url:
             raise HomeAssistantError(f"Arlo did not start a stream for {self.entity_id}")
         return {
             "url": url,
             "format": stream_format(url, user_agent),
             "expires_in": STREAM_EXPIRES_IN,
+            "reused": reused,
         }
 
     def siren_on(self, duration=30, volume=10):
@@ -1088,7 +1123,8 @@ async def async_camera_start_stream_service(hass, call):
     _LOGGER.info("{} start stream".format(entity_id))
     camera = get_entity_from_domain(hass, CAMERA_DOMAIN, entity_id)
     return await camera.async_start_fresh_stream(
-        call.data.get(ATTR_USER_AGENT, DEFAULT_STREAM_USER_AGENT)
+        call.data.get(ATTR_USER_AGENT, DEFAULT_STREAM_USER_AGENT),
+        call.data.get(ATTR_REUSE_ACTIVE, True),
     )
 
 

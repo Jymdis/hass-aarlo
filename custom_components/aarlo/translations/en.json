@@ -201,6 +201,10 @@
         "user_agent": {
           "name": "User Agent",
           "description": "linux (default) for MPEG-DASH, arlo for RTSPS."
+        },
+        "reuse_active": {
+          "name": "Reuse Active Stream",
+          "description": "Join a stream that is already running instead of stopping it (default true)."
         }
       }
     }

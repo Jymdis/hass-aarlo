@@ -51,8 +51,8 @@ camera_stop_activity:
 camera_start_stream:
   name: Start a Stream
   description: >-
-    Stop any stale stream, start a new user stream and return its URL
-    (response only). Arlo drops the stream if nothing connects within 30 seconds.
+    Join the running stream or stop any stale one, start a new user stream and
+    return its URL (response only). Arlo drops the stream if nothing connects within 30 seconds.
   target:
     entity:
       integration: aarlo
@@ -67,6 +67,16 @@ camera_start_stream:
       example: linux
       selector:
         text:
+    reuse_active:
+      name: Reuse Active Stream
+      description: >-
+        When the camera is already streaming (for example a doorbell press),
+        join that stream instead of stopping it first. Default true.
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean:
 
 camera_start_recording:
   name: Record to the Cloud

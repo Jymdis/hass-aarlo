@@ -33,9 +33,12 @@ Changes in this fork:
 - **New service `aarlo.camera_start_stream`** (response only, one camera).
   Stops any stale stream (as `aarlo.camera_stop_activity` does), starts a new
   user stream and returns `{"url": ..., "format": "dash" | "rtsps" | "hls",
-  "expires_in": 30}`. Optional field `user_agent`: `linux` (default, MPEG-DASH)
-  or `arlo` (RTSPS). Arlo drops the stream if nothing connects within about 30
-  seconds.
+  "expires_in": 30, "reused": false}`. Optional field `user_agent`: `linux`
+  (default, MPEG-DASH) or `arlo` (RTSPS). Optional field `reuse_active`
+  (default `true`): when the camera is already streaming, for example right
+  after a doorbell press, it joins that stream instead of stopping it, and
+  answers `"reused": true`. A failed fresh start is retried once after 4
+  seconds. Arlo drops the stream if nothing connects within about 30 seconds.
 
   ```yaml
   action: aarlo.camera_start_stream
