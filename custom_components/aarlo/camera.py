@@ -391,7 +391,14 @@ class ArloCam(Camera):
                     self._attr_is_streaming = False
                     self._attr_is_recording = True
                 elif value == "fullFrameSnapshot":
-                    self._attr_is_recording = True
+                    # Fork: pyaarlo replays "fullFrameSnapshot" when a snapshot
+                    # ends (after dropping the snapshot request). Only a running
+                    # snapshot shows as recording; at its end go back to what the
+                    # stream state says, instead of staying "recording" for good.
+                    if getattr(self._camera, "is_taking_snapshot", True) is True:
+                        self._attr_is_recording = True
+                    else:
+                        self._attr_is_recording = self._state == CameraState.RECORDING
                 elif value == "startUserStream":
                     pass
                 else:
@@ -684,7 +691,20 @@ class ArloCam(Camera):
                 # A local decoder failure must not prevent the requested
                 # camera/cloud stop. Preserve errors instead of hiding them.
                 stopped = await self.hass.async_add_executor_job(self.stop_activity)
+            # Fork: pyaarlo marks the camera idle without an activity callback,
+            # so clear our flags here or the entity stays "recording".
+            self._mark_idle_after_stop()
             return stopped
+
+    def _mark_idle_after_stop(self):
+        self._state = CameraState.IDLE
+        self._attr_is_streaming = False
+        self._attr_is_recording = False
+        if self.hass is not None and self.entity_id is not None:
+            try:
+                self.async_write_ha_state()
+            except Exception as err:  # noqa: BLE001 - not added to HA (yet)
+                _LOGGER.debug(f"{self._attr_unique_id} state not written: {err}")
 
     async def _async_fresh_start(self, user_agent):
         """Stop whatever runs, then POST startUserStream. None when it fails."""

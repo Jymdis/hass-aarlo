@@ -1,3 +1,11 @@
+0.8.1.27.4 (fork: Jymdis/hass-aarlo)
+  - The camera entity no longer stays "recording" after a snapshot or a stop.
+    A snapshot only shows as recording while it runs (pyaarlo replays
+    "fullFrameSnapshot" when it ends, and that now restores the stream state),
+    and camera_stop_activity clears the recording/streaming flags and writes
+    the state, since pyaarlo goes idle without an activity callback.
+  - Includes 0.8.1.27.3.
+
 0.8.1.27.3 (fork: Jymdis/hass-aarlo)
   - aarlo.camera_start_stream: new optional field reuse_active (default true).
     When the camera is already streaming (alertStreamActive after a doorbell

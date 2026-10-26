@@ -94,3 +94,57 @@ async def test_pending_stream_start_preserves_existing_stream(camera):
 def test_failed_decoder_is_not_hidden_as_available(camera):
     camera.stream = SimpleNamespace(available=False)
     assert not camera.available
+
+
+@pytest.mark.asyncio
+async def test_snapshot_from_idle_ends_back_in_idle(camera):
+    callbacks = await subscribe(camera)
+    camera._camera.is_taking_snapshot = True
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "fullFrameSnapshot")
+    assert camera.is_recording
+    # pyaarlo replays the saved state once the snapshot request is gone.
+    camera._camera.is_taking_snapshot = False
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "fullFrameSnapshot")
+    assert not camera.is_recording
+    assert camera.state == CameraState.IDLE
+
+
+@pytest.mark.asyncio
+async def test_snapshot_during_user_stream_ends_back_in_streaming(camera):
+    callbacks = await subscribe(camera)
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "userStreamActive")
+    camera._camera.is_taking_snapshot = True
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "fullFrameSnapshot")
+    camera._camera.is_taking_snapshot = False
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "fullFrameSnapshot")
+    assert camera.is_streaming
+    assert not camera.is_recording
+    assert camera.state == CameraState.STREAMING
+
+
+@pytest.mark.asyncio
+async def test_snapshot_during_alert_stream_stays_recording(camera):
+    callbacks = await subscribe(camera)
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "alertStreamActive")
+    camera._camera.is_taking_snapshot = False
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, "fullFrameSnapshot")
+    assert camera.is_recording
+    assert camera.state == CameraState.RECORDING
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("activity", ["alertStreamActive", "userStreamActive", "fullFrameSnapshot"])
+async def test_stop_activity_clears_flags_and_writes_state(camera, activity):
+    callbacks = await subscribe(camera)
+    camera._camera.is_taking_snapshot = True
+    callbacks[ACTIVITY_STATE_KEY](camera._camera, ACTIVITY_STATE_KEY, activity)
+    assert camera.state != CameraState.IDLE
+    camera.entity_id = "camera.test"
+    camera.stream = None
+    camera.async_write_ha_state = MagicMock()
+    camera.hass.async_add_executor_job = AsyncMock(return_value=True)
+    assert await camera.async_stop_activity() is True
+    assert not camera.is_recording
+    assert not camera.is_streaming
+    assert camera.state == CameraState.IDLE
+    camera.async_write_ha_state.assert_called_once_with()
