@@ -1,3 +1,10 @@
+0.8.1.27.5 (fork: Jymdis/hass-aarlo)
+  - Require pyaarlo 0.8.0.27.post3: a failed Arlo request (for example a
+    startUserStream refused during a doorbell press) now logs the HTTP status
+    and Arlo's error code and message at warning level, without headers, URLs
+    or tokens. A start that answers without a url no longer raises KeyError.
+  - Includes 0.8.1.27.3 and 0.8.1.27.4.
+
 0.8.1.27.4 (fork: Jymdis/hass-aarlo)
   - The camera entity no longer stays "recording" after a snapshot or a stop.
     A snapshot only shows as recording while it runs (pyaarlo replays

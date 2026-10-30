@@ -13,8 +13,8 @@
   "issue_tracker": "https://github.com/Jymdis/hass-aarlo/issues",
   "requirements": [
     "unidecode",
-    "https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post2.tar.gz#pyaarlo==0.8.0.27.post2",
+    "https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post3.tar.gz#pyaarlo==0.8.0.27.post3",
     "aiofiles"
   ],
-  "version": "0.8.1.27.4"
+  "version": "0.8.1.27.5"
 }

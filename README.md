@@ -13,13 +13,13 @@ Assistant as an invalid version; use `0.8.1.27.1` or later).
 Changes in this fork:
 
 - **pyaarlo from the fork.** `manifest.json` requires
-  [Jymdis/pyaarlo](https://github.com/Jymdis/pyaarlo) `0.8.0.27.post2`
+  [Jymdis/pyaarlo](https://github.com/Jymdis/pyaarlo) `0.8.0.27.post3`
   (snapshot fix for upstream pyaarlo issue
   [#207](https://github.com/twrecked/pyaarlo/issues/207): a stream URL lookup no
   longer hides a stopped camera, so `takeSnapshot` is no longer sent to a camera
   that is not streaming). The requirement is the tag's source archive with a
   version fragment,
-  `https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post2.tar.gz#pyaarlo==0.8.0.27.post2`:
+  `https://github.com/Jymdis/pyaarlo/archive/refs/tags/v0.8.0.27.post3.tar.gz#pyaarlo==0.8.0.27.post3`:
   it needs no `git`, and Home Assistant checks the installed version against
   the fragment, so the package is installed once instead of on every start.
 - **Event stream that stays alive** (pyaarlo `0.8.0.27.post2`). After a 401
@@ -66,8 +66,8 @@ on its own.
 1. HACS > three-dot menu > Custom repositories: add
    `https://github.com/Jymdis/hass-aarlo`, category **Integration**.
 2. Install **Arlo Camera Support** from that repository (version
-   `0.8.1.27.2` or later) and restart Home Assistant. On the first start
-   Home Assistant installs pyaarlo `0.8.0.27.post2` from the URL above.
+   `0.8.1.27.5` or later) and restart Home Assistant. On the first start
+   Home Assistant installs pyaarlo `0.8.0.27.post3` from the URL above.
 
 If upstream hass-aarlo is already installed through HACS, remove that
 repository first; both install to `custom_components/aarlo`.

@@ -201,7 +201,7 @@ def test_manifest_requirement_pins_the_fork_version():
     # A version pin (not a bare URL) lets HA see it as installed after the
     # first install instead of reinstalling from GitHub on every start.
     assert pyaarlo[0].url is None
-    assert str(pyaarlo[0].specifier) == "==0.8.0.27.post2"
+    assert str(pyaarlo[0].specifier) == "==0.8.0.27.post3"
 
 
 # The strategies homeassistant/loader.py accepts for a custom integration's
