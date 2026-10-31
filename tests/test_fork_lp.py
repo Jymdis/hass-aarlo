@@ -58,7 +58,7 @@ def test_snapshot_without_active_stream_keeps_stream_snapshot_path():
 
 
 @pytest.mark.asyncio
-async def test_start_stream_stops_stale_activity_then_starts():
+async def test_start_stream_stops_stale_activity_then_starts(no_retry_delay):
     cam, device = _camera()
     order = []
     device.stop_activity.side_effect = lambda: order.append("stop") or True
@@ -67,18 +67,22 @@ async def test_start_stream_stops_stale_activity_then_starts():
     result = await cam.async_start_fresh_stream("linux")
     assert order == ["stop", ("start", "linux")]
     assert result == {"url": "https://example.invalid/stream.mpd",
-                      "format": "dash", "expires_in": 30, "reused": False}
+                      "format": "dash", "expires_in": 30, "reused": False, "attempts": 1}
     device.get_stream.assert_not_called()
 
 
 @pytest.fixture
 def no_retry_delay(monkeypatch):
     sleeps = []
+    clock = SimpleNamespace(now=1000.0)
 
     async def fake_sleep(seconds):
         sleeps.append(seconds)
+        clock.now += seconds
 
     monkeypatch.setattr(aarlo_camera.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(aarlo_camera.asyncio, "get_running_loop",
+                        lambda: SimpleNamespace(time=lambda: clock.now))
     return sleeps
 
 
@@ -103,12 +107,12 @@ async def test_active_stream_is_reused_without_stopping(no_retry_delay):
     device.stop_activity.assert_not_called()
     device.start_stream.assert_not_called()
     assert result == {"url": "rtsps://example.invalid/live", "format": "rtsps",
-                      "expires_in": 30, "reused": True}
+                      "expires_in": 30, "reused": True, "attempts": 0}
     assert no_retry_delay == []
 
 
 @pytest.mark.asyncio
-async def test_active_stream_ignored_when_reuse_is_off():
+async def test_active_stream_ignored_when_reuse_is_off(no_retry_delay):
     cam, device = _camera(active=True)
     device.start_stream.return_value = "rtsps://example.invalid/fresh"
     result = await cam.async_start_fresh_stream("arlo", reuse_active=False)
@@ -172,7 +176,10 @@ def test_stream_format(url, agent, expected):
 def test_start_stream_schema_takes_one_camera_and_defaults_to_linux():
     data = START_STREAM_SCHEMA({"entity_id": "camera.aarlo_test"})
     assert data == {"entity_id": ["camera.aarlo_test"], "user_agent": "linux",
-                    "reuse_active": True}
+                    "reuse_active": True, "retry_for": 0}
+    assert START_STREAM_SCHEMA({"entity_id": "camera.a", "retry_for": "40"})["retry_for"] == 40
+    with pytest.raises(vol.Invalid):
+        START_STREAM_SCHEMA({"entity_id": "camera.a", "retry_for": 61})
     assert START_STREAM_SCHEMA({"entity_id": "camera.a", "reuse_active": False})["reuse_active"] is False
     with pytest.raises(vol.Invalid):
         START_STREAM_SCHEMA({"entity_id": ["camera.a", "camera.b"]})
@@ -184,9 +191,9 @@ async def test_service_handler_returns_the_camera_response(monkeypatch):
     cam.async_start_fresh_stream = AsyncMock(return_value={"url": "u"})
     monkeypatch.setattr(aarlo_camera, "get_entity_from_domain", lambda *_: cam)
     call = SimpleNamespace(data={"entity_id": ["camera.aarlo_test"], "user_agent": "arlo",
-                                 "reuse_active": False})
+                                 "reuse_active": False, "retry_for": 40})
     assert await aarlo_camera.async_camera_start_stream_service(None, call) == {"url": "u"}
-    cam.async_start_fresh_stream.assert_awaited_once_with("arlo", False)
+    cam.async_start_fresh_stream.assert_awaited_once_with("arlo", False, 40)
 
 
 def test_unicode_is_squashed_by_default():
@@ -241,3 +248,40 @@ def test_stream_watchdog_option_reaches_pyaarlo():
     assert ArloCfg(MagicMock()).stream_watchdog == 15 * 60
     with pytest.raises(vol.Invalid):
         AARLO_SCHEMA({"stream_watchdog_minutes": -1})
+
+
+@pytest.mark.asyncio
+async def test_retry_for_keeps_trying_without_stopping_until_the_call_ends(no_retry_delay):
+    # Arlo refuses (409 / 14002, SIP call in progress) for the first 4 starts.
+    cam, device = _camera()
+    order = []
+    answers = iter([None, None, None, None, "rtsps://example.invalid/after-call"])
+    device.stop_activity.side_effect = lambda: order.append("stop") or True
+    device.start_stream.side_effect = lambda ua: order.append("start") or next(answers)
+    result = await cam.async_start_fresh_stream("arlo", reuse_active=False, retry_for=40)
+    assert order == ["stop", "start", "stop", "start", "start", "start", "start"]
+    assert no_retry_delay == [4, 3, 3, 3]
+    assert result["url"] == "rtsps://example.invalid/after-call"
+    assert result["attempts"] == 5
+
+
+@pytest.mark.asyncio
+async def test_retry_for_gives_up_at_the_deadline(no_retry_delay):
+    cam, device = _camera()
+    device.start_stream.return_value = None
+    with pytest.raises(HomeAssistantError, match="attempts"):
+        await cam.async_start_fresh_stream("arlo", reuse_active=False, retry_for=12)
+    # 4 s before the second fresh start, then 3 s steps while they fit in 12 s.
+    assert no_retry_delay == [4, 3, 3]
+    assert device.start_stream.call_count == 4
+    assert device.stop_activity.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_for_zero_keeps_the_old_two_attempts(no_retry_delay):
+    cam, device = _camera()
+    device.start_stream.return_value = None
+    with pytest.raises(HomeAssistantError):
+        await cam.async_start_fresh_stream("arlo")
+    assert device.start_stream.call_count == 2
+    assert no_retry_delay == [4]

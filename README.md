@@ -38,7 +38,10 @@ Changes in this fork:
   (default `true`): when the camera is already streaming, for example right
   after a doorbell press, it joins that stream instead of stopping it, and
   answers `"reused": true`. A failed fresh start is retried once after 4
-  seconds. Arlo drops the stream if nothing connects within about 30 seconds.
+  seconds. Optional field `retry_for` (seconds, 0 to 60, default `0`): keep
+  starting every 3 seconds until then; during a doorbell press Arlo answers
+  409 / 14002 "SIP Streaming in progress" until the doorbell's call ends. The
+  response also says how many `attempts` it took. Arlo drops the stream if nothing connects within about 30 seconds.
 
   ```yaml
   action: aarlo.camera_start_stream

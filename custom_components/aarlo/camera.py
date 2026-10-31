@@ -123,14 +123,20 @@ SERVICE_RECORD_STOP = "camera_stop_recording"
 SERVICE_START_STREAM = "camera_start_stream"
 ATTR_USER_AGENT = "user_agent"
 ATTR_REUSE_ACTIVE = "reuse_active"
+ATTR_RETRY_FOR = "retry_for"
 DEFAULT_STREAM_USER_AGENT = "linux"
 STREAM_EXPIRES_IN = 30
 # Fork: seconds to wait before the one retry of a failed fresh start.
 START_STREAM_RETRY_DELAY = 4
+# Fork: with retry_for, seconds between the further attempts. During a doorbell
+# press Arlo answers 409 / 14002 "SIP Streaming in progress, RTSP Streaming is
+# not allowed" until the doorbell's call ends.
+START_STREAM_RETRY_INTERVAL = 3
 START_STREAM_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): vol.All(cv.comp_entity_ids, vol.Length(min=1, max=1)),
     vol.Optional(ATTR_USER_AGENT, default=DEFAULT_STREAM_USER_AGENT): cv.string,
     vol.Optional(ATTR_REUSE_ACTIVE, default=True): cv.boolean,
+    vol.Optional(ATTR_RETRY_FOR, default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
 })
 SIREN_ON_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids,
@@ -717,8 +723,18 @@ class ArloCam(Camera):
             _LOGGER.warning(f"{self.entity_id} start stream failed: {type(err).__name__}")
             return None
 
+    async def _async_start_only(self, user_agent):
+        """POST startUserStream without stopping first. None when it fails."""
+        try:
+            return await self.hass.async_add_executor_job(
+                self._camera.start_stream, user_agent
+            )
+        except Exception as err:  # noqa: BLE001 - retried, then reported
+            _LOGGER.warning(f"{self.entity_id} start stream failed: {type(err).__name__}")
+            return None
+
     async def async_start_fresh_stream(self, user_agent=DEFAULT_STREAM_USER_AGENT,
-                                       reuse_active=True):
+                                       reuse_active=True, retry_for=0):
         """Fork: start a user stream and return its details.
 
         With `reuse_active` and the camera already streaming (a doorbell press
@@ -728,9 +744,15 @@ class ArloCam(Camera):
         stops whatever the camera and HA's stream worker are doing (the
         `camera_stop_activity` equivalent), so a URL left from an ended session
         can never be returned, then POSTs startUserStream; a failed start is
-        retried once after START_STREAM_RETRY_DELAY seconds. Arlo drops the
+        retried once after START_STREAM_RETRY_DELAY seconds. With `retry_for`
+        (seconds), further starts follow every START_STREAM_RETRY_INTERVAL
+        seconds, without stopping again, until that much time has passed since
+        the call: a doorbell's own call blocks RTSP until it ends. Arlo drops the
         stream when nothing connects to it within about 30 seconds.
         """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0, int(retry_for or 0))
+        attempts = 0
         url = None
         reused = False
         if reuse_active and getattr(self._camera, "is_stream_active", False) is True:
@@ -743,18 +765,26 @@ class ArloCam(Camera):
                 url = None
             reused = bool(url)
         if not url:
+            attempts += 1
             url = await self._async_fresh_start(user_agent)
         if not url:
             _LOGGER.info(f"{self.entity_id} retrying stream start")
             await asyncio.sleep(START_STREAM_RETRY_DELAY)
+            attempts += 1
             url = await self._async_fresh_start(user_agent)
+        while not url and loop.time() + START_STREAM_RETRY_INTERVAL <= deadline:
+            await asyncio.sleep(START_STREAM_RETRY_INTERVAL)
+            attempts += 1
+            url = await self._async_start_only(user_agent)
         if not url:
-            raise HomeAssistantError(f"Arlo did not start a stream for {self.entity_id}")
+            raise HomeAssistantError(
+                f"Arlo did not start a stream for {self.entity_id} ({attempts} attempts)")
         return {
             "url": url,
             "format": stream_format(url, user_agent),
             "expires_in": STREAM_EXPIRES_IN,
             "reused": reused,
+            "attempts": attempts,
         }
 
     def siren_on(self, duration=30, volume=10):
@@ -1145,6 +1175,7 @@ async def async_camera_start_stream_service(hass, call):
     return await camera.async_start_fresh_stream(
         call.data.get(ATTR_USER_AGENT, DEFAULT_STREAM_USER_AGENT),
         call.data.get(ATTR_REUSE_ACTIVE, True),
+        call.data.get(ATTR_RETRY_FOR, 0),
     )
 
 

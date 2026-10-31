@@ -205,6 +205,10 @@
         "reuse_active": {
           "name": "Reuse Active Stream",
           "description": "Join a stream that is already running instead of stopping it (default true)."
+        },
+        "retry_for": {
+          "name": "Retry For",
+          "description": "Keep retrying for up to this many seconds while the doorbell's own call blocks RTSP (default 0)."
         }
       }
     }

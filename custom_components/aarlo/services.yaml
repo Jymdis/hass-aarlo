@@ -77,6 +77,20 @@ camera_start_stream:
       example: true
       selector:
         boolean:
+    retry_for:
+      name: Retry For
+      description: >-
+        Keep retrying the start for up to this many seconds (0 to 60, default 0).
+        During a doorbell press Arlo refuses RTSP (409, error 14002) while the
+        doorbell's own call is in progress.
+      required: false
+      default: 0
+      example: 40
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: s
 
 camera_start_recording:
   name: Record to the Cloud
