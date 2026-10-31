@@ -5,6 +5,12 @@ Unreleased (fork: Jymdis/hass-aarlo)
     a doorbell press Arlo answers 409 / 14002 "SIP Streaming in progress, RTSP
     Streaming is not allowed" until the doorbell's own call ends. The response
     also has "attempts".
+  - aarlo.camera_start_stream: new optional field watch_along (default false).
+    Sends only the stream query with action "get" (pyaarlo get_stream_url, as in
+    pyaarlo PR #166) and never startUserStream or stop_activity, so a doorbell's
+    call keeps ringing. Asked as the iOS app (user_agent arlo) while a view is
+    open, Arlo answers with that view's rtsps watch-along stream. Retries within
+    retry_for; the response has watch_along and watchalong_flag.
 
 0.8.1.27.5 (fork: Jymdis/hass-aarlo)
   - Require pyaarlo 0.8.0.27.post3: a failed Arlo request (for example a

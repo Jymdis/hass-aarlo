@@ -176,7 +176,7 @@ def test_stream_format(url, agent, expected):
 def test_start_stream_schema_takes_one_camera_and_defaults_to_linux():
     data = START_STREAM_SCHEMA({"entity_id": "camera.aarlo_test"})
     assert data == {"entity_id": ["camera.aarlo_test"], "user_agent": "linux",
-                    "reuse_active": True, "retry_for": 0}
+                    "reuse_active": True, "retry_for": 0, "watch_along": False}
     assert START_STREAM_SCHEMA({"entity_id": "camera.a", "retry_for": "40"})["retry_for"] == 40
     with pytest.raises(vol.Invalid):
         START_STREAM_SCHEMA({"entity_id": "camera.a", "retry_for": 61})
@@ -191,9 +191,9 @@ async def test_service_handler_returns_the_camera_response(monkeypatch):
     cam.async_start_fresh_stream = AsyncMock(return_value={"url": "u"})
     monkeypatch.setattr(aarlo_camera, "get_entity_from_domain", lambda *_: cam)
     call = SimpleNamespace(data={"entity_id": ["camera.aarlo_test"], "user_agent": "arlo",
-                                 "reuse_active": False, "retry_for": 40})
+                                 "reuse_active": False, "retry_for": 40, "watch_along": True})
     assert await aarlo_camera.async_camera_start_stream_service(None, call) == {"url": "u"}
-    cam.async_start_fresh_stream.assert_awaited_once_with("arlo", False, 40)
+    cam.async_start_fresh_stream.assert_awaited_once_with("arlo", False, 40, True)
 
 
 def test_unicode_is_squashed_by_default():
@@ -285,3 +285,64 @@ async def test_retry_for_zero_keeps_the_old_two_attempts(no_retry_delay):
         await cam.async_start_fresh_stream("arlo")
     assert device.start_stream.call_count == 2
     assert no_retry_delay == [4]
+
+
+WATCH_URL = "rtsps://192.0.2.10:443/vzmodulelive/x?egressToken=T&watchalong=true"
+
+
+@pytest.mark.asyncio
+async def test_watch_along_only_queries_and_never_starts_or_stops(no_retry_delay):
+    cam, device = _camera(active=True)
+    device.get_stream_url.return_value = WATCH_URL
+    result = await cam.async_start_fresh_stream("arlo", watch_along=True)
+    device.get_stream_url.assert_called_once_with("arlo")
+    device.stop_activity.assert_not_called()
+    device.start_stream.assert_not_called()
+    device.get_stream.assert_not_called()
+    assert result == {"url": WATCH_URL, "format": "rtsps", "expires_in": 30,
+                      "reused": False, "attempts": 1, "watch_along": True,
+                      "watchalong_flag": True}
+    assert no_retry_delay == []
+
+
+@pytest.mark.asyncio
+async def test_watch_along_retries_within_retry_for_without_stopping(no_retry_delay):
+    cam, device = _camera()
+    answers = iter([None, RuntimeError("409"), "rtsps://192.0.2.10/live"])
+
+    def query(ua):
+        value = next(answers)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    device.get_stream_url.side_effect = query
+    result = await cam.async_start_fresh_stream("arlo", watch_along=True, retry_for=20)
+    assert device.get_stream_url.call_count == 3
+    assert no_retry_delay == [3, 3]
+    assert result["watchalong_flag"] is False
+    assert result["attempts"] == 3
+    device.stop_activity.assert_not_called()
+    device.start_stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_watch_along_gives_up_without_falling_back_to_a_start(no_retry_delay):
+    cam, device = _camera()
+    device.get_stream_url.return_value = None
+    with pytest.raises(HomeAssistantError, match="watch-along"):
+        await cam.async_start_fresh_stream("arlo", watch_along=True, retry_for=7)
+    assert device.get_stream_url.call_count == 3  # t=0, 3, 6
+    device.stop_activity.assert_not_called()
+    device.start_stream.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_watch_along_log_line_has_no_token(no_retry_delay, caplog):
+    import logging
+    cam, device = _camera()
+    device.get_stream_url.return_value = WATCH_URL
+    with caplog.at_level(logging.INFO, logger="custom_components.aarlo.camera"):
+        await cam.async_start_fresh_stream("arlo", watch_along=True)
+    assert "watchalong flag True" in caplog.text
+    assert "egressToken" not in caplog.text and "192.0.2.10" not in caplog.text

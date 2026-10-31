@@ -91,6 +91,17 @@ camera_start_stream:
           min: 0
           max: 60
           unit_of_measurement: s
+    watch_along:
+      name: Watch Along
+      description: >-
+        Only ask Arlo for the stream that is already running (action "get", as
+        the Arlo app; use user_agent arlo). Never starts or stops anything, so a
+        doorbell call keeps ringing. Default false.
+      required: false
+      default: false
+      example: true
+      selector:
+        boolean:
 
 camera_start_recording:
   name: Record to the Cloud

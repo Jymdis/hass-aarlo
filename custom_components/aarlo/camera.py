@@ -124,6 +124,7 @@ SERVICE_START_STREAM = "camera_start_stream"
 ATTR_USER_AGENT = "user_agent"
 ATTR_REUSE_ACTIVE = "reuse_active"
 ATTR_RETRY_FOR = "retry_for"
+ATTR_WATCH_ALONG = "watch_along"
 DEFAULT_STREAM_USER_AGENT = "linux"
 STREAM_EXPIRES_IN = 30
 # Fork: seconds to wait before the one retry of a failed fresh start.
@@ -137,6 +138,7 @@ START_STREAM_SCHEMA = vol.Schema({
     vol.Optional(ATTR_USER_AGENT, default=DEFAULT_STREAM_USER_AGENT): cv.string,
     vol.Optional(ATTR_REUSE_ACTIVE, default=True): cv.boolean,
     vol.Optional(ATTR_RETRY_FOR, default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=60)),
+    vol.Optional(ATTR_WATCH_ALONG, default=False): cv.boolean,
 })
 SIREN_ON_SCHEMA = vol.Schema({
     vol.Required(ATTR_ENTITY_ID): cv.comp_entity_ids,
@@ -733,8 +735,53 @@ class ArloCam(Camera):
             _LOGGER.warning(f"{self.entity_id} start stream failed: {type(err).__name__}")
             return None
 
+    async def async_watch_along_stream(self, user_agent="arlo", retry_for=0):
+        """Fork: ask Arlo for the stream that is already running, never start or stop one.
+
+        Sends the stream query with action "get" (pyaarlo get_stream_url, as in
+        pyaarlo PR #166) instead of startUserStream. Asked as the iOS app (user
+        agent "arlo") while the Arlo app has a view open, Arlo answers with that
+        view's rtsps "watch-along" stream, which a second client can play. It is
+        meant for a doorbell press: the doorbell's own call blocks
+        startUserStream (409 / 14002), and stop_activity could end that call, so
+        this path never calls either. Retries every START_STREAM_RETRY_INTERVAL
+        seconds within `retry_for`.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0, int(retry_for or 0))
+        attempts = 0
+        url = None
+        while True:
+            attempts += 1
+            try:
+                url = await self.hass.async_add_executor_job(
+                    self._camera.get_stream_url, user_agent
+                )
+            except Exception as err:  # noqa: BLE001 - retried, then reported
+                _LOGGER.warning(f"{self.entity_id} watch-along query failed: {type(err).__name__}")
+                url = None
+            if url or loop.time() + START_STREAM_RETRY_INTERVAL > deadline:
+                break
+            await asyncio.sleep(START_STREAM_RETRY_INTERVAL)
+        if not url:
+            raise HomeAssistantError(
+                f"Arlo gave no watch-along stream for {self.entity_id} ({attempts} attempts)")
+        flagged = "watchalong=true" in url.lower()
+        # The URL carries a token: log only its shape.
+        _LOGGER.info(f"{self.entity_id} watch-along answer after {attempts} attempts: "
+                     f"{url.split(':', 1)[0]}, watchalong flag {flagged}")
+        return {
+            "url": url,
+            "format": stream_format(url, user_agent),
+            "expires_in": STREAM_EXPIRES_IN,
+            "reused": False,
+            "attempts": attempts,
+            "watch_along": True,
+            "watchalong_flag": flagged,
+        }
+
     async def async_start_fresh_stream(self, user_agent=DEFAULT_STREAM_USER_AGENT,
-                                       reuse_active=True, retry_for=0):
+                                       reuse_active=True, retry_for=0, watch_along=False):
         """Fork: start a user stream and return its details.
 
         With `reuse_active` and the camera already streaming (a doorbell press
@@ -750,6 +797,8 @@ class ArloCam(Camera):
         the call: a doorbell's own call blocks RTSP until it ends. Arlo drops the
         stream when nothing connects to it within about 30 seconds.
         """
+        if watch_along:
+            return await self.async_watch_along_stream(user_agent, retry_for)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(0, int(retry_for or 0))
         attempts = 0
@@ -1176,6 +1225,7 @@ async def async_camera_start_stream_service(hass, call):
         call.data.get(ATTR_USER_AGENT, DEFAULT_STREAM_USER_AGENT),
         call.data.get(ATTR_REUSE_ACTIVE, True),
         call.data.get(ATTR_RETRY_FOR, 0),
+        call.data.get(ATTR_WATCH_ALONG, False),
     )
 
 

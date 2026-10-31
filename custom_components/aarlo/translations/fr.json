@@ -209,6 +209,10 @@
         "retry_for": {
           "name": "Retry For",
           "description": "Keep retrying for up to this many seconds while the doorbell's own call blocks RTSP (default 0)."
+        },
+        "watch_along": {
+          "name": "Watch Along",
+          "description": "Only ask for the stream that is already running; never start or stop one (default false)."
         }
       }
     }

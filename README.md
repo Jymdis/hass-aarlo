@@ -41,7 +41,13 @@ Changes in this fork:
   seconds. Optional field `retry_for` (seconds, 0 to 60, default `0`): keep
   starting every 3 seconds until then; during a doorbell press Arlo answers
   409 / 14002 "SIP Streaming in progress" until the doorbell's call ends. The
-  response also says how many `attempts` it took. Arlo drops the stream if nothing connects within about 30 seconds.
+  response also says how many `attempts` it took. Optional field
+  `watch_along` (default `false`): only ask Arlo for the stream that is already
+  running, with the stream query's `get` action as the Arlo app does (use
+  `user_agent: arlo`). It never starts or stops anything, so a doorbell's call
+  keeps ringing; with `retry_for` it asks again every 3 seconds. The response
+  has `"watch_along": true` and `watchalong_flag` (whether the URL is Arlo's
+  watch-along stream). Arlo drops the stream if nothing connects within about 30 seconds.
 
   ```yaml
   action: aarlo.camera_start_stream
