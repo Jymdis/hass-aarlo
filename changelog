@@ -1,4 +1,4 @@
-Unreleased (fork: Jymdis/hass-aarlo)
+0.8.1.27.6 (fork: Jymdis/hass-aarlo)
   - aarlo.camera_start_stream: new optional field retry_for (seconds, 0-60,
     default 0). After the two fresh starts it keeps POSTing startUserStream
     every 3 s, without stopping again, until that much time has passed. During
